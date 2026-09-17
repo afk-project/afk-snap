@@ -1,0 +1,481 @@
+{
+  "info": {
+    "_postman_id": "8f8db348-28d8-4f74-91a2-af5a9a202609",
+    "name": "AFKSnap API - Fullstack",
+    "description": "REST API collection AFKSnap v1.1. Jalankan Login Demo untuk menyimpan accessToken otomatis. Create Room menyimpan roomId/roomCode, upload menyimpan assetId, generation menyimpan generationId, dan checkout menyimpan orderId. Folder 08 menguji kontrak error standar { status, error, message }. Event Socket.IO realtime diuji memakai panduan docs/POSTMAN_SOCKET_IO_GUIDE.md karena Postman memisahkan koleksi HTTP dan Socket.IO.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{accessToken}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "apiUrl", "value": "{{baseUrl}}/api" },
+    { "key": "socketUrl", "value": "ws://localhost:3000" },
+    { "key": "accessToken", "value": "" },
+    { "key": "adminToken", "value": "" },
+    { "key": "testEmail", "value": "" },
+    { "key": "resetToken", "value": "" },
+    { "key": "roomId", "value": "1" },
+    { "key": "roomCode", "value": "" },
+    { "key": "assetId", "value": "1" },
+    { "key": "generationId", "value": "1" },
+    { "key": "orderId", "value": "" },
+    { "key": "redirectUrl", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "00 - Health",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health",
+            "description": "Memeriksa status API serta mode/model AI."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('API sehat', () => pm.response.to.have.status(200));", "pm.test('status ok', () => pm.expect(pm.response.json().status).to.eql('ok'));"] }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 - Authentication",
+      "item": [
+        {
+          "name": "Register New User",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": { "type": "text/javascript", "exec": ["const email = `arief.postman.${Date.now()}@example.com`;", "pm.collectionVariables.set('testEmail', email);"] }
+            },
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('Register berhasil', () => pm.response.to.have.status(201));", "const json = pm.response.json();", "if (json.access_token) pm.collectionVariables.set('accessToken', json.access_token);"] }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Arief Postman\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"Password123!\",\n  \"passwordConfirmation\": \"Password123!\",\n  \"birthday\": \"1998-01-20\"\n}",
+              "options": { "raw": { "language": "json" } }
+            },
+            "url": "{{apiUrl}}/auth/register"
+          }
+        },
+        {
+          "name": "Login Demo",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('Login berhasil', () => pm.response.to.have.status(200));", "const json = pm.response.json();", "pm.collectionVariables.set('accessToken', json.access_token);"] }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"demo@afksnap.id\",\n  \"password\": \"Demo123!\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{apiUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "Login Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('Login admin berhasil', () => pm.response.to.have.status(200));", "const json = pm.response.json();", "pm.collectionVariables.set('adminToken', json.access_token);"] }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"admin@afksnap.id\",\n  \"password\": \"Admin123!\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{apiUrl}}/auth/login"
+          }
+        },
+        {
+          "name": "Google Login",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"credential\": \"PASTE_GOOGLE_ID_TOKEN\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{apiUrl}}/auth/google",
+            "description": "Ganti credential dengan Google ID token dari frontend Google OAuth."
+          }
+        },
+        {
+          "name": "Forgot Password",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["const json = pm.response.json();", "if (json.devResetUrl) {", "  const token = new URL(json.devResetUrl).searchParams.get('token');", "  if (token) pm.collectionVariables.set('resetToken', token);", "}"] }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"demo@afksnap.id\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{apiUrl}}/auth/forgot-password"
+          }
+        },
+        {
+          "name": "Reset Password",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"token\": \"{{resetToken}}\",\n  \"password\": \"PasswordBaru123!\",\n  \"passwordConfirmation\": \"PasswordBaru123!\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{apiUrl}}/auth/reset-password"
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Templates & Profile",
+      "item": [
+        {
+          "name": "List AI Templates",
+          "request": { "auth": { "type": "noauth" }, "method": "GET", "header": [], "url": "{{apiUrl}}/templates" }
+        },
+        {
+          "name": "Get My Profile",
+          "request": { "method": "GET", "header": [], "url": "{{apiUrl}}/users/me" }
+        },
+        {
+          "name": "Update My Profile",
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Arief Rizki Rachman\",\n  \"birthday\": \"1998-01-20\",\n  \"avatarAnimation\": \"float\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{apiUrl}}/users/me"
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Credits",
+      "item": [
+        {
+          "name": "Get Credit Balance",
+          "request": { "method": "GET", "header": [], "url": "{{apiUrl}}/credits/balance" }
+        },
+        {
+          "name": "Get Credit Transactions",
+          "request": { "method": "GET", "header": [], "url": "{{apiUrl}}/credits/transactions" }
+        }
+      ]
+    },
+    {
+      "name": "04 - Rooms",
+      "item": [
+        {
+          "name": "List My Rooms",
+          "request": { "method": "GET", "header": [], "url": "{{apiUrl}}/rooms" }
+        },
+        {
+          "name": "Create Room",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('Room dibuat', () => pm.response.to.have.status(201));", "const room = pm.response.json().data;", "pm.collectionVariables.set('roomId', String(room.id));", "pm.collectionVariables.set('roomCode', room.code);"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Room Postman\",\n  \"maxParticipants\": 6\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{apiUrl}}/rooms"
+          }
+        },
+        {
+          "name": "Join Room by Code",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"code\": \"{{roomCode}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{apiUrl}}/rooms/join"
+          }
+        },
+        {
+          "name": "Get Room Detail",
+          "request": { "method": "GET", "header": [], "url": "{{apiUrl}}/rooms/{{roomId}}" }
+        },
+        {
+          "name": "Get Room Messages",
+          "request": { "method": "GET", "header": [], "url": "{{apiUrl}}/rooms/{{roomId}}/messages" }
+        },
+        {
+          "name": "Upload Room Photo",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('Foto room terunggah', () => pm.response.to.have.status(201));", "const json = pm.response.json();", "if (json.data?.id) pm.collectionVariables.set('assetId', String(json.data.id));"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "formdata", "formdata": [{ "key": "photo", "type": "file", "src": [] }] },
+            "url": "{{apiUrl}}/rooms/{{roomId}}/photos",
+            "description": "Pilih JPG, PNG, atau WebP maksimal 8 MB. Jalankan dua kali untuk generation grup."
+          }
+        },
+        {
+          "name": "Delete Room Photo",
+          "request": { "method": "DELETE", "header": [], "url": "{{apiUrl}}/rooms/{{roomId}}/photos/{{assetId}}" }
+        }
+      ]
+    },
+    {
+      "name": "05 - AI Generations",
+      "item": [
+        {
+          "name": "List My Generations",
+          "request": { "method": "GET", "header": [], "url": "{{apiUrl}}/generations" }
+        },
+        {
+          "name": "Get Generation Detail",
+          "request": { "method": "GET", "header": [], "url": "{{apiUrl}}/generations/{{generationId}}" }
+        },
+        {
+          "name": "Create Solo Real Generation",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('Job diterima', () => pm.response.to.have.status(202));", "const json = pm.response.json();", "if (json.data?.id) pm.collectionVariables.set('generationId', String(json.data.id));"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "photos", "type": "file", "src": [] },
+                { "key": "generationType", "value": "solo-real", "type": "text" },
+                { "key": "format", "value": "square", "type": "text" },
+                { "key": "layout", "value": "1", "type": "text" },
+                { "key": "prompt", "value": "Potret studio hangat, menghadap kamera", "type": "text" }
+              ]
+            },
+            "url": "{{apiUrl}}/generations"
+          }
+        },
+        {
+          "name": "Create Room Animation Generation",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('Job room diterima', () => pm.response.to.have.status(202));", "const json = pm.response.json();", "if (json.data?.id) pm.collectionVariables.set('generationId', String(json.data.id));"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "roomId", "value": "{{roomId}}", "type": "text" },
+                { "key": "generationType", "value": "together-animation", "type": "text" },
+                { "key": "format", "value": "story", "type": "text" },
+                { "key": "layout", "value": "2", "type": "text" },
+                { "key": "prompt", "value": "Semua peserta berdiri bersanding dan tersenyum", "type": "text" }
+              ]
+            },
+            "url": "{{apiUrl}}/generations",
+            "description": "Room harus memiliki minimal dua source photo. Ganti generationType menjadi together-superhero, together-80s, atau together-simpsons untuk preset lain."
+          }
+        },
+        {
+          "name": "Create Room Anime Simpson Generation",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('Job Simpson diterima', () => pm.response.to.have.status(202));", "const json = pm.response.json();", "if (json.data?.id) pm.collectionVariables.set('generationId', String(json.data.id));"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "roomId", "value": "{{roomId}}", "type": "text" },
+                { "key": "generationType", "value": "together-simpsons", "type": "text" },
+                { "key": "format", "value": "square", "type": "text" },
+                { "key": "layout", "value": "1", "type": "text" },
+                { "key": "prompt", "value": "Pose keluarga ceria di ruang tamu", "type": "text" }
+              ]
+            },
+            "url": "{{apiUrl}}/generations"
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Payments",
+      "item": [
+        {
+          "name": "Get Packages",
+          "request": { "method": "GET", "header": [], "url": "{{apiUrl}}/payments/packages" }
+        },
+        {
+          "name": "Get My Orders",
+          "request": { "method": "GET", "header": [], "url": "{{apiUrl}}/payments/orders" }
+        },
+        {
+          "name": "Checkout Max",
+          "event": [
+            {
+              "listen": "test",
+              "script": { "type": "text/javascript", "exec": ["pm.test('Checkout dibuat', () => pm.response.to.have.status(201));", "const json = pm.response.json();", "if (json.order?.orderId) pm.collectionVariables.set('orderId', json.order.orderId);", "if (json.redirectUrl) pm.collectionVariables.set('redirectUrl', json.redirectUrl);"] }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"plan\": \"max\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{apiUrl}}/payments/checkout"
+          }
+        },
+        {
+          "name": "Sync Payment Status",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"orderId\": \"{{orderId}}\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{apiUrl}}/payments/sync"
+          }
+        },
+        {
+          "name": "Midtrans Notification Example",
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\n  \"order_id\": \"{{orderId}}\",\n  \"status_code\": \"200\",\n  \"gross_amount\": \"650000.00\",\n  \"transaction_status\": \"settlement\",\n  \"fraud_status\": \"accept\",\n  \"signature_key\": \"REPLACE_WITH_VALID_SHA512_SIGNATURE\"\n}", "options": { "raw": { "language": "json" } } },
+            "url": "{{apiUrl}}/payments/notification",
+            "description": "Contoh struktur webhook. Request manual akan ditolak bila signature tidak valid."
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 - Admin",
+      "item": [
+        {
+          "name": "Admin Report Daily",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{apiUrl}}/admin/reports?period=daily"
+          }
+        },
+        {
+          "name": "Admin Report Weekly",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{apiUrl}}/admin/reports?period=weekly"
+          }
+        },
+        {
+          "name": "Admin Report Monthly",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{apiUrl}}/admin/reports?period=monthly"
+          }
+        },
+        {
+          "name": "Admin Report Yearly",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }] },
+            "method": "GET",
+            "header": [],
+            "url": "{{apiUrl}}/admin/reports?period=yearly"
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 - Error Handling Tests",
+      "description": "Jalankan Login Demo dan Create Room terlebih dahulu untuk request error yang membutuhkan accessToken atau roomId. Semua respons error memakai bentuk { status, error, message }.",
+      "item": [
+        {
+          "name": "401 - Protected Route Without Token",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Status 401', () => pm.response.to.have.status(401));", "const json = pm.response.json();", "pm.test('Kontrak Unauthorized benar', () => { pm.expect(json.status).to.eql(401); pm.expect(json.error).to.eql('Unauthorized'); pm.expect(json.message).to.be.a('string'); });"] } }],
+          "request": { "auth": { "type": "noauth" }, "method": "GET", "header": [], "url": "{{apiUrl}}/users/me" }
+        },
+        {
+          "name": "401 - Invalid Login",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Status 401', () => pm.response.to.have.status(401));", "pm.test('Tidak membocorkan detail password', () => pm.expect(pm.response.json().error).to.eql('Unauthorized'));" ] } }],
+          "request": { "auth": { "type": "noauth" }, "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"email\": \"demo@afksnap.id\",\n  \"password\": \"password-salah\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{apiUrl}}/auth/login" }
+        },
+        {
+          "name": "400 - Password Confirmation Mismatch",
+          "event": [{ "listen": "prerequest", "script": { "type": "text/javascript", "exec": ["pm.collectionVariables.set('testEmail', `error.${Date.now()}@example.com`);"] } }, { "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Status 400', () => pm.response.to.have.status(400));", "pm.test('ValidationError', () => pm.expect(pm.response.json().error).to.eql('ValidationError'));" ] } }],
+          "request": { "auth": { "type": "noauth" }, "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"name\": \"Error Test\",\n  \"email\": \"{{testEmail}}\",\n  \"password\": \"Password123!\",\n  \"passwordConfirmation\": \"TidakSama123!\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{apiUrl}}/auth/register" }
+        },
+        {
+          "name": "400 - Invalid Birthday",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Status 400', () => pm.response.to.have.status(400));", "pm.test('Pesan tanggal lahir', () => pm.expect(pm.response.json().message).to.include('Tanggal lahir'));" ] } }],
+          "request": { "method": "PATCH", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"name\": \"Arief Demo\",\n  \"birthday\": \"bukan-tanggal\",\n  \"avatarAnimation\": \"none\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{apiUrl}}/users/me" }
+        },
+        {
+          "name": "400 - Invalid Room Participant Limit",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Status 400', () => pm.response.to.have.status(400));", "pm.test('ValidationError', () => pm.expect(pm.response.json().error).to.eql('ValidationError'));" ] } }],
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"name\": \"Room Tidak Valid\",\n  \"maxParticipants\": 9\n}", "options": { "raw": { "language": "json" } } }, "url": "{{apiUrl}}/rooms" }
+        },
+        {
+          "name": "404 - Join Unknown Room",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Status 404', () => pm.response.to.have.status(404));", "pm.test('NotFound', () => pm.expect(pm.response.json().error).to.eql('NotFound'));" ] } }],
+          "request": { "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{\n  \"code\": \"TIDAKADA\"\n}", "options": { "raw": { "language": "json" } } }, "url": "{{apiUrl}}/rooms/join" }
+        },
+        {
+          "name": "400 - Upload Without Photo",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Status 400', () => pm.response.to.have.status(400));", "pm.test('Foto wajib dipilih', () => pm.expect(pm.response.json().message).to.include('Pilih foto'));" ] } }],
+          "request": { "method": "POST", "header": [], "url": "{{apiUrl}}/rooms/{{roomId}}/photos", "description": "Gunakan roomId valid dari Create Room. Request sengaja tidak mengirim multipart photo." }
+        },
+        {
+          "name": "403 - User Accessing Admin Report",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Status 403', () => pm.response.to.have.status(403));", "pm.test('Forbidden', () => pm.expect(pm.response.json().error).to.eql('Forbidden'));" ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{apiUrl}}/admin/reports?period=daily", "description": "Gunakan accessToken akun demo/user, bukan adminToken." }
+        },
+        {
+          "name": "400 - Malformed JSON",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Status 400', () => pm.response.to.have.status(400));", "const json = pm.response.json();", "pm.test('InvalidJson aman', () => { pm.expect(json.error).to.eql('InvalidJson'); pm.expect(json.message).to.eql('Format JSON request tidak valid'); });" ] } }],
+          "request": { "auth": { "type": "noauth" }, "method": "POST", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": { "mode": "raw", "raw": "{", "options": { "raw": { "language": "json" } } }, "url": "{{apiUrl}}/auth/login" }
+        },
+        {
+          "name": "404 - Unknown Endpoint",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": ["pm.test('Status 404', () => pm.response.to.have.status(404));", "pm.test('Kontrak NotFound benar', () => pm.expect(pm.response.json()).to.include({ status: 404, error: 'NotFound' }));" ] } }],
+          "request": { "auth": { "type": "noauth" }, "method": "GET", "header": [], "url": "{{baseUrl}}/endpoint-tidak-ada" }
+        }
+      ]
+    }
+  ]
+}
