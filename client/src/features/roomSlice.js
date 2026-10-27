@@ -34,7 +34,7 @@ export const fetchRoom = createAsyncThunk("rooms/detail", async (roomId, { rejec
 
 const roomSlice = createSlice({
   name: "rooms",
-  initialState: { items: [], current: null, cameraStates: {}, loading: false, error: null },
+  initialState: { items: [], current: null, cameraStates: {}, photoSync: null, loading: false, error: null },
   reducers: {
     participantOnline(state, action) {
       if (!state.current) return;
@@ -54,6 +54,15 @@ const roomSlice = createSlice({
       const key = `${roomId}:${userId}`;
       if (active) state.cameraStates[key] = action.payload;
       else delete state.cameraStates[key];
+    },
+    photoSyncStarted(state, action) {
+      state.photoSync = { ...action.payload, completedCount: 0 };
+    },
+    photoSyncProgress(state, action) {
+      if (state.photoSync?.sessionId === action.payload.sessionId) state.photoSync.completedCount = action.payload.completedCount;
+    },
+    photoSyncFinished(state, action) {
+      if (state.photoSync?.sessionId === action.payload.sessionId) state.photoSync = null;
     },
     roomExpired(state, action) {
       if (state.current?.id === Number(action.payload.roomId)) state.current.status = "closed";
@@ -98,5 +107,5 @@ const roomSlice = createSlice({
   },
 });
 
-export const { participantOnline, assetAdded, assetRemoved, cameraStateChanged, roomExpired } = roomSlice.actions;
+export const { participantOnline, assetAdded, assetRemoved, cameraStateChanged, photoSyncStarted, photoSyncProgress, photoSyncFinished, roomExpired } = roomSlice.actions;
 export default roomSlice.reducer;

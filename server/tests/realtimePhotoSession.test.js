@@ -88,4 +88,33 @@ describe("realtime photo session", () => {
     expect(ownerFinished.reason).toBe("all-reported");
     expect(ownerFinished.results).toHaveLength(2);
   });
+
+  test("signal WebRTC hanya diteruskan ke socket di room yang sama", async () => {
+    const expiresAt = new Date(Date.now() + 60_000);
+    Room.findByPk.mockResolvedValue({ id: 16, ownerId: 1, status: "active", expiresAt });
+    RoomMember.findOne.mockResolvedValue({ id: 1 });
+
+    const owner = createSocket("owner-socket", { id: 1, name: "Owner", role: "user" });
+    const member = createSocket("member-socket", { id: 2, name: "Member", role: "user" });
+    const outsider = createSocket("outsider-socket", { id: 3, name: "Outsider", role: "user" });
+    const io = createIo([owner, member, outsider]);
+    registerSocket(io);
+    [owner, member, outsider].forEach((socket) => io.connect(socket));
+
+    await owner.trigger("room:join", { roomId: 16 });
+    await member.trigger("room:join", { roomId: 16 });
+    await owner.trigger("camera:state", { roomId: 16, active: true });
+
+    const cameraState = member.outgoing.filter((item) => item.event === "camera:state").at(-1).payload;
+    expect(cameraState.socketId).toBe("owner-socket");
+
+    await member.trigger("webrtc:signal", { roomId: 16, targetSocketId: "owner-socket", data: { type: "request" } });
+    const relayed = owner.outgoing.filter((item) => item.event === "webrtc:signal").at(-1).payload;
+    expect(relayed).toEqual({ roomId: 16, fromSocketId: "member-socket", fromUserId: 2, data: { type: "request" } });
+
+    await outsider.trigger("webrtc:signal", { roomId: 16, targetSocketId: "owner-socket", data: { type: "request" } });
+    await member.trigger("webrtc:signal", { roomId: 16, targetSocketId: "outsider-socket", data: { type: "request" } });
+    expect(owner.outgoing.filter((item) => item.event === "webrtc:signal")).toHaveLength(1);
+    expect(outsider.outgoing.filter((item) => item.event === "webrtc:signal")).toHaveLength(0);
+  });
 });

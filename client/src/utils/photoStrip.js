@@ -16,7 +16,7 @@ const drawCover = (context, image, x, y, width, height) => {
 };
 
 export async function downloadPhotoStrip({ photos, template, filename = "afksnap-photobooth" }) {
-  if (!photos.length) throw new Error("Ambil atau unggah minimal satu foto terlebih dahulu");
+  if (!photos.some(Boolean)) throw new Error("Ambil atau unggah minimal satu foto terlebih dahulu");
   const canvas = document.createElement("canvas");
   canvas.width = template.canvas?.width || 1080;
   canvas.height = template.canvas?.height || 1920;
@@ -24,9 +24,10 @@ export async function downloadPhotoStrip({ photos, template, filename = "afksnap
   context.fillStyle = "#0f172a";
   context.fillRect(0, 0, canvas.width, canvas.height);
 
-  const loadedPhotos = await Promise.all(photos.slice(0, template.slots.length).map(loadImage));
+  const loadedPhotos = await Promise.all(photos.slice(0, template.slots.length).map((src) => (src ? loadImage(src) : null)));
   const drawPhotos = () => template.slots.forEach((slot, index) => {
     const image = loadedPhotos[index % loadedPhotos.length];
+    if (!image) return;
     drawCover(
       context,
       image,
