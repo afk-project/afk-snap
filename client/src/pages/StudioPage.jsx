@@ -15,6 +15,7 @@ import { setBalance } from "../features/walletSlice";
 import api, { assetUrl, serverUrl } from "../services/api";
 import { notify } from "../services/notify";
 import { downloadPhotoStrip } from "../utils/photoStrip";
+import { arrangeRoomSlots, getRoomLiveSlot, getRoomSlotLabel } from "../utils/roomSlots";
 
 export default function StudioPage() {
   const [files, setFiles] = useState([]);
@@ -34,10 +35,16 @@ export default function StudioPage() {
   const room = currentRoom?.id === Number(roomId) ? currentRoom : null;
   const roomAssets = useMemo(() => room?.assets || [], [room]);
   const previews = useMemo(() => files.map((file) => URL.createObjectURL(file)), [files]);
-  const roomPhotoUrls = useMemo(() => roomAssets.map((asset) => assetUrl(asset.url)), [roomAssets]);
-  const stripPhotos = roomId ? roomPhotoUrls : previews;
   const compatibleTemplates = useMemo(() => getPhotoTemplatesByLayout(settings.layout), [settings.layout]);
   const selectedFrame = compatibleTemplates.find((template) => template.id === settings.frameTemplate) || compatibleTemplates[0] || null;
+  const slotCount = selectedFrame?.slots?.length || 0;
+  const roomPhotoUrls = useMemo(
+    () => arrangeRoomSlots(roomAssets, room?.ownerId, slotCount).map((asset) => (asset ? assetUrl(asset.url) : null)),
+    [roomAssets, room?.ownerId, slotCount],
+  );
+  const stripPhotos = roomId ? roomPhotoUrls : previews;
+  const slotLabels = roomId ? Array.from({ length: slotCount }, (_, index) => getRoomSlotLabel(index, slotCount)) : [];
+  const liveSlotIndex = roomId ? getRoomLiveSlot(roomAssets, room?.ownerId, user?.id, slotCount) : null;
   const selectedGeneration = getGenerationOption(settings.generationType);
 
   useEffect(() => () => previews.forEach((preview) => URL.revokeObjectURL(preview)), [previews]);
@@ -200,7 +207,7 @@ export default function StudioPage() {
                 </button>
               ))}
             </div>
-            <CameraCapture onCapture={handleCameraCapture} overlayTemplate={selectedFrame} capturedCount={capturedCount} maxShots={maxShots} disabled={uploadingRoom} />
+            <CameraCapture onCapture={handleCameraCapture} overlayTemplate={selectedFrame} capturedCount={capturedCount} maxShots={maxShots} disabled={uploadingRoom} slotIndex={liveSlotIndex} slotLabel={roomId ? getRoomSlotLabel(liveSlotIndex, slotCount) : ""} />
             <div className="my-5 flex items-center gap-3 text-xs text-[var(--muted)]"><span className="h-px flex-1 bg-[var(--border)]" />atau impor foto<span className="h-px flex-1 bg-[var(--border)]" /></div>
             {roomId ? <RoomPhotoRoll roomAssets={roomAssets} user={user} room={room} uploading={uploadingRoom} onInput={handleFileInput} onRemove={removeRoomPhoto} /> : <PhotoUploader files={files} previews={previews} max={settings.layout} onChange={handleFileInput} onRemove={(index) => setFiles((current) => current.filter((_, itemIndex) => itemIndex !== index))} />}
           </Panel>
@@ -235,9 +242,9 @@ export default function StudioPage() {
 
         <div className="space-y-6">
           <Panel step="05" title="Preview template">
-            <PhotoStripPreview photos={stripPhotos} template={selectedFrame} />
+            <PhotoStripPreview photos={stripPhotos} template={selectedFrame} slotLabels={slotLabels} />
             <p className="mt-4 text-center text-sm font-black">{selectedFrame?.name || `Layout ${settings.layout} slot`}</p>
-            <button type="button" disabled={!stripPhotos.length || !selectedFrame || exporting} onClick={handleExportStrip} className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-orange-400/50 bg-orange-500/10 py-3.5 font-black text-orange-500 disabled:opacity-40">{exporting ? <LoaderCircle className="animate-spin" /> : <Download />} Export frame tanpa credit</button>
+            <button type="button" disabled={!stripPhotos.some(Boolean) ||!selectedFrame || exporting} onClick={handleExportStrip} className="mt-4 flex w-full items-center justify-center gap-2 rounded-2xl border border-orange-400/50 bg-orange-500/10 py-3.5 font-black text-orange-500 disabled:opacity-40">{exporting ? <LoaderCircle className="animate-spin" /> : <Download />} Export frame tanpa credit</button>
           </Panel>
 
           <Panel step="06" title="Atur hasil AI">

@@ -1,5 +1,5 @@
 import { ArrowLeft, Camera, Check, Clock3, Copy, ExternalLink, Link2, Radio, Trash2, Upload, WandSparkles } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Link, useParams } from "react-router";
 import ChatPanel from "../components/ChatPanel";
@@ -9,9 +9,11 @@ import LoadingScreen from "../components/LoadingScreen";
 import ParticipantsPanel from "../components/ParticipantsPanel";
 import { getPhotoTemplatesByLayout } from "../constants/photoTemplates";
 import { clearChat, fetchMessages } from "../features/chatSlice";
-import { fetchRoom } from "../features/roomSlice";
+import { assetAdded, assetRemoved, fetchRoom } from "../features/roomSlice";
+import useRoomCameraMesh from "../hooks/useRoomCameraMesh";
 import api, { assetUrl } from "../services/api";
 import { notify } from "../services/notify";
+import { assignLiveSlots, getRoomLiveSlot, getRoomSlotLabel } from "../utils/roomSlots";
 
 export default function RoomPage() {
   const { roomId } = useParams();
@@ -24,9 +26,16 @@ export default function RoomPage() {
   const activeJob = useSelector((state) => state.generations.active);
   const cameraStates = useSelector((state) => state.rooms.cameraStates);
   const user = useSelector((state) => state.auth.user);
+  const photoSync = useSelector((state) => state.rooms.photoSync);
   const dispatch = useDispatch();
   const room = currentRoom?.id === Number(roomId) ? currentRoom : null;
   const roomTemplates = getPhotoTemplatesByLayout(selectedLayout);
+  const [localStream, setLocalStream] = useState(null);
+  const remoteCameras = useMemo(
+    () => Object.values(cameraStates || {}).filter((camera) => Number(camera.roomId) === Number(roomId) && camera.userId !== user?.id && camera.socketId),
+    [cameraStates, roomId, user?.id],
+  );
+  const remoteStreams = useRoomCameraMesh({ roomId: Number(roomId), localStream, remoteCameras });
 
   useEffect(() => {
     dispatch(clearChat());
@@ -50,9 +59,12 @@ export default function RoomPage() {
     try {
       const form = new FormData();
       form.append("photo", file);
-      await api.post(`/rooms/${roomId}/photos`, form);
+      // Daftar foto diperbarui lewat event socket asset:added; fetchRoom di sini akan
+      // mengosongkan room sementara dan menutup kamera yang sedang live.
+      const { data } = await api.post(`/rooms/${roomId}/photos`, form);
+      dispatch(assetAdded(data.data));
       notify("Foto kamu masuk ke room");
-      dispatch(fetchRoom(roomId));
+      return data.data;
     } catch (error) {
       notify(error.response?.data?.message || error.message, "error");
       throw error;
@@ -78,7 +90,7 @@ export default function RoomPage() {
   const deletePhoto = async (asset) => {
     try {
       await api.delete(`/rooms/${roomId}/photos/${asset.id}`);
-      await dispatch(fetchRoom(roomId));
+      dispatch(assetRemoved({ id: asset.id }));
       notify("Foto berhasil dihapus. Kamu bisa mengambil foto ulang.");
     } catch (error) {
       notify(error.response?.data?.message || error.message, "error");
@@ -91,6 +103,34 @@ export default function RoomPage() {
   const assets = Array.isArray(room.assets) ? room.assets : [];
   const activeTemplate = roomTemplates.find((template) => template.id === selectedTemplate) || roomTemplates[0];
   const activeCameras = Object.values(cameraStates || {}).filter((camera) => Number(camera.roomId) === Number(roomId));
+  const slotCount = activeTemplate?.slots?.length || 0;
+  const peers = remoteCameras.map((camera) => ({ key: camera.socketId, userId: camera.userId, name: camera.name, stream: remoteStreams[camera.socketId] || null }));
+  // Slot live dihitung dari semua kamera aktif (termasuk kamera sendiri) supaya posisi sama di setiap browser.
+  const liveSlots = assignLiveSlots([...peers, { key: "local", userId: user?.id }], room, slotCount);
+  const ownLiveSlot = liveSlots.findIndex((camera) => camera?.key === "local");
+  const liveSlotIndex = ownLiveSlot >= 0 ? ownLiveSlot : getRoomLiveSlot(assets, room.ownerId, user?.id, slotCount);
+  const isRoomOwner = room.ownerId === user?.id;
+  const roomSync = Number(photoSync?.roomId) === Number(roomId) ? photoSync : null;
+  // Admin room memotret: jika ada member dengan kamera aktif, mulai foto bersama lewat server
+  // sehingga countdown muncul di semua kamera. Tanpa member aktif, kembali ke foto biasa.
+  const startGroupPhoto = (delaySeconds) => {
+    if (!peers.length) return Promise.resolve(false);
+    const delay = [3, 5, 10].includes(delaySeconds) ? delaySeconds : 3;
+    return new Promise((resolve) => {
+      dispatch({
+        type: "socket/photoSyncStart",
+        payload: { roomId: Number(roomId), delaySeconds: delay },
+        meta: { ack: (response) => {
+          if (!response?.ok) notify(response?.message || "Foto bersama gagal dimulai", "error");
+          resolve(true);
+        } },
+      });
+    });
+  };
+  const slottedPeers = peers.map((peer) => {
+    const index = liveSlots.findIndex((camera) => camera?.key === peer.key);
+    return { ...peer, slotIndex: index >= 0 ? index : null };
+  });
 
   return (
     <div className="space-y-6">
@@ -103,7 +143,7 @@ export default function RoomPage() {
 
       <section className="rounded-3xl border border-orange-400/30 bg-[var(--surface)] p-5 sm:p-6">
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-          <div><p className="flex items-center gap-2 text-xs font-black uppercase tracking-[.18em] text-orange-500"><Radio size={15} className="animate-pulse" /> Live Virtual Camera</p><h2 className="mt-2 text-xl font-black">Open camera bareng dari room</h2><p className="mt-1 text-sm text-[var(--muted)]">Setiap kamera berjalan di perangkat masing-masing. Hasil jepretan langsung tersinkron ke semua peserta melalui Socket.IO.</p></div>
+          <div><p className="flex items-center gap-2 text-xs font-black uppercase tracking-[.18em] text-orange-500"><Radio size={15} className="animate-pulse" /> Live Virtual Camera</p><h2 className="mt-2 text-xl font-black">Open camera bareng dari room</h2><p className="mt-1 text-sm text-[var(--muted)]">Kamera semua peserta tampil live di sini lewat WebRTC. Hasil jepretan langsung tersinkron ke semua peserta melalui Socket.IO.</p></div>
           <span className="rounded-full bg-emerald-500/10 px-3 py-2 text-xs font-black text-emerald-500">{activeCameras.length} kamera aktif</span>
         </div>
         {!!activeCameras.length && <div className="mb-4 flex flex-wrap gap-2">{activeCameras.map((camera) => <span key={camera.userId} className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold text-emerald-500">● {camera.name}</span>)}</div>}
@@ -115,14 +155,25 @@ export default function RoomPage() {
           <p className="mb-3 text-xs font-black uppercase tracking-[.16em] text-[var(--muted)]">Template hasil foto</p>
           <div className="flex gap-3 overflow-x-auto pb-2">{roomTemplates.map((template) => <button key={template.id} type="button" onClick={() => setSelectedTemplate(template.id)} className={`w-20 shrink-0 overflow-hidden rounded-xl border text-left ${selectedTemplate === template.id ? "border-orange-500 ring-2 ring-orange-500/20" : "border-[var(--border)]"}`}><img src={template.src} alt={template.name} className="aspect-[9/16] w-full bg-slate-950 object-cover" /><span className="block truncate bg-[var(--surface-2)] px-2 py-1.5 text-[9px] font-bold">{template.name}</span></button>)}</div>
           <p className="mt-2 text-xs text-[var(--muted)]">Foto kamera masuk ke photo roll room. Template terpilih otomatis dibawa saat membuka Camera Studio.</p>
+          {slotCount > 1 && <p className="mt-1 text-xs font-bold text-orange-500">Slot paling atas khusus admin room ({room.owner?.name}). Slot di bawahnya untuk member yang join.</p>}
         </div>
+        {roomSync && <p className="mb-3 rounded-xl border border-orange-400/40 bg-orange-500/10 px-4 py-3 text-sm font-black text-orange-500">📸 Foto bersama dimulai oleh {roomSync.initiatedBy?.name} — {roomSync.completedCount}/{roomSync.participantCount} kamera selesai{roomSync.localEligible ? "" : " (buka kamera untuk ikut di sesi berikutnya)"}</p>}
+        {isRoomOwner && !!peers.length && !roomSync && <p className="mb-3 text-xs font-bold text-[var(--muted)]">Tombol foto kamu akan memulai hitung mundur di kamera semua member yang aktif.</p>}
         <CameraCapture
           onCapture={uploadPhotoFile}
+          onStreamChange={setLocalStream}
           onCameraStateChange={(active) => dispatch({ type: "socket/cameraState", payload: { roomId: Number(roomId), active } })}
           overlayTemplate={activeTemplate}
           capturedCount={assets.length}
           maxShots={6}
           disabled={uploading || assets.length >= 6}
+          slotIndex={liveSlotIndex}
+          slotLabel={getRoomSlotLabel(liveSlotIndex, slotCount)}
+          peers={slottedPeers}
+          onShutter={isRoomOwner ? startGroupPhoto : undefined}
+          delayOptions={isRoomOwner && slottedPeers.length ? [3, 5, 10] : undefined}
+          syncCapture={roomSync}
+          onSyncResult={(sessionId, result) => dispatch({ type: "socket/photoSyncResult", payload: { roomId: Number(roomId), sessionId, ...result } })}
         />
       </section>
 

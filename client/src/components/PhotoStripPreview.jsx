@@ -1,4 +1,4 @@
-export default function PhotoStripPreview({ photos, template }) {
+export default function PhotoStripPreview({ photos, template, slotLabels = [] }) {
   if (!template) return <div className="grid aspect-[9/16] w-full place-items-center rounded-2xl bg-[var(--surface-2)] px-6 text-center text-sm font-bold text-[var(--muted)]">Pilih jumlah frame dan template photobooth terlebih dahulu.</div>;
   const photosAboveFrame = template.photoLayer === "above";
   return (
@@ -10,10 +10,10 @@ export default function PhotoStripPreview({ photos, template }) {
           className={`absolute overflow-hidden bg-slate-800 ${photosAboveFrame ? "z-10" : "z-0"}`}
           style={{ left: `${slot.x}%`, top: `${slot.y}%`, width: `${slot.width}%`, height: `${slot.height}%` }}
         >
-          {photos.length ? (
+          {photos.length && photos[index % photos.length] ? (
             <img src={photos[index % photos.length]} alt={`Slot ${index + 1}`} className="h-full w-full object-cover" />
           ) : (
-            <div className="grid h-full place-items-center px-3 text-center text-xs font-bold text-slate-500">Foto {index + 1}</div>
+            <div className="grid h-full place-items-center px-3 text-center text-xs font-bold text-slate-500">{slotLabels[index] || `Foto ${index + 1}`}</div>
           )}
         </div>
       ))}

@@ -76,6 +76,7 @@ module.exports = (io) => {
           roomId: Number(roomId),
           userId: cameraSocket.user.id,
           name: cameraSocket.user.name,
+          socketId: cameraSocket.id,
           active: true,
         }));
 
@@ -153,6 +154,7 @@ module.exports = (io) => {
           roomId: Number(roomId),
           userId: socket.user.id,
           name: socket.user.name,
+          socketId: socket.id,
           active: Boolean(active),
         });
         acknowledgement?.({ ok: true });
@@ -160,6 +162,28 @@ module.exports = (io) => {
         const message = error.message || "Status kamera gagal disinkronkan";
         socket.emit("camera:error", { message });
         acknowledgement?.({ ok: false, message });
+      }
+    });
+
+    // Relay signaling WebRTC (request/offer/answer/candidate) antar socket di room yang sama.
+    // Video tidak lewat server; server hanya meneruskan pesan negosiasi.
+    socket.on("webrtc:signal", async ({ roomId, targetSocketId, data } = {}, acknowledgement) => {
+      try {
+        const numericRoomId = Number(roomId);
+        if (!numericRoomId || !targetSocketId || !data || !socket.rooms.has(roomChannel(numericRoomId))) throw new Error("Signal tidak valid");
+        const roomSockets = await io.in(roomChannel(numericRoomId)).fetchSockets();
+        const target = roomSockets.find((roomSocket) => roomSocket.id === targetSocketId);
+        if (!target) throw new Error("Peserta tidak ditemukan di room");
+        target.emit("webrtc:signal", {
+          roomId: numericRoomId,
+          fromSocketId: socket.id,
+          fromUserId: socket.user.id,
+          data,
+        });
+        acknowledgement?.({ ok: true });
+      } catch (error) {
+        // Peer akan mencoba negosiasi ulang saat status kamera berubah.
+        acknowledgement?.({ ok: false, message: error.message });
       }
     });
 
